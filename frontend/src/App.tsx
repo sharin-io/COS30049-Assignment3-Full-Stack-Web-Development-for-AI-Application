@@ -1,9 +1,11 @@
-import React, { act } from 'react'
+import React from 'react'
 import { EducationPage } from './pages/EducationPage';
 import { AboutPage } from './pages/AboutPage';
 import { TestPredictionPage } from './pages/TestPredictionPage';
 import { MapPage } from './pages/Map'
+import { HomePage } from './pages/HomePage';
 import { Navbar } from './components/Navbar';
+import { Footer } from './components/Footer';
 import DataVisualization from './pages/DataVisualization'
 
 
@@ -37,16 +39,16 @@ export default function App() {
 
       {/* Main Content */}
       <main>
+        {activePage === 'Home' && <HomePage onNavigate={setActivePage} />}
         {activePage === 'Test' && <TestPredictionPage />}
         {activePage === 'Education' && <EducationPage />}
         {activePage === 'About' && <AboutPage />}
-        {activePage === 'Map' && < MapPage />}
-        {activePage === 'Data' && < DataVisualization />}
-
+        {activePage === 'Map' && <MapPage />}
+        {activePage === 'Data Visualization' && <DataVisualization />}
       </main>
 
-      {}
-
+      {/* Footer - Consistent across all pages */}
+      <Footer onNavigate={setActivePage} />
     </div>
   );
 }

@@ -227,13 +227,6 @@ export const AboutPage: React.FC = () => {
           </div>
         </Card>
 
-        {/* Footer */}
-        <div className="mt-12 text-center text-gray-500 dark:text-gray-400">
-          <p>© 2025 AirAware. Built with care for healthier communities.</p>
-          <p className="mt-2">
-            Inspired by environmental awareness and powered by modern web technology.
-          </p>
-        </div>
       </div>
     </div>
   );

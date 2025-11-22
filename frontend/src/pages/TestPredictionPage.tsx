@@ -1,4 +1,3 @@
-// Updated TestPredictionPage.tsx with correct predict API usage
 import React, { useState, useMemo, useEffect } from "react";
 import { Card } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -18,7 +17,6 @@ import type {
 } from "../types/aqi.types";
 import api, { fetchRegression, aqiApi } from "../api/aqi";
 import Prediction from "../components/chart/Prediction";
-import { Footer } from "../components/Footer";
 
 
 export const TestPredictionPage: React.FC = () => {
@@ -57,6 +55,15 @@ export const TestPredictionPage: React.FC = () => {
         const r = await aqiApi.getRegions(formData.country);
         if (r.data?.regions) setRegions(r.data.regions);
         else setRegions([]);
+  
+        // ---- AUTO-SELECT FIRST REGION (ONLY ADDED) ----
+        if (r.data?.regions?.length) {
+          setFormData(prev => ({
+            ...prev,
+            region: r.data.regions[0],
+          }));
+        }
+  
       } catch {
         setRegions([]);
       }
@@ -64,6 +71,7 @@ export const TestPredictionPage: React.FC = () => {
     };
     loadRegions();
   }, [formData.country]);
+  
 
   
 
@@ -83,11 +91,46 @@ export const TestPredictionPage: React.FC = () => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
+  // ----------------------------------------------------
+  // ONLY VALIDATION ADDED — NOTHING ELSE CHANGED
+  // ----------------------------------------------------
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     setResult(null);
+
+    // -------- VALIDATION RULES --------
+    if (!formData.region) {
+      setError("Region is required.");
+      setLoading(false);
+      return;
+    }
+
+    if (!formData.date) {
+      setError("Date is required.");
+      setLoading(false);
+      return;
+    }
+
+    if (formData.temperature < -50 || formData.temperature > 60) {
+      setError("Temperature must be between -50 and 60.");
+      setLoading(false);
+      return;
+    }
+
+    if (formData.relative_humidity < 0 || formData.relative_humidity > 100) {
+      setError("Humidity must be between 0 and 100.");
+      setLoading(false);
+      return;
+    }
+
+    if (formData.wind_speed < 0 || formData.wind_speed > 200) {
+      setError("Wind speed must be between 0 and 200.");
+      setLoading(false);
+      return;
+    }
+    // -------- END VALIDATION --------
 
     try {
       const response = await api.post("/api/predict", formData);
@@ -331,13 +374,21 @@ export const TestPredictionPage: React.FC = () => {
       </Card>
 
       {error && (
-        <Card className="p-4 mt-4 bg-red-100">
-          <XCircle className="inline-block mr-2 text-red-700" />
-          {error}
-        </Card>
+        <div
+          className="
+            fixed bottom-6 left-1/2 transform -translate-x-1/2
+            bg-red-600 text-white px-6 py-3 rounded-lg shadow-lg
+            flex items-center gap-2
+            animate-slide-up
+            z-[9999]
+          "
+        >
+          <XCircle size={20} />
+          <span>{error}</span>
+        </div>
       )}
 
-      <Footer></Footer>
+
     </div>
   );
 };

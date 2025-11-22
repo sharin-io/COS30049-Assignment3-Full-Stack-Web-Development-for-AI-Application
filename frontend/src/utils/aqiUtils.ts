@@ -1,12 +1,23 @@
 import type { AQICategory, HealthImpact } from '../types/aqi.types';
-export const getAQICategory = (aqi: number): AQICategory => {
-  if (aqi <= 50) return 'Good';
-  if (aqi <= 100) return 'Moderate';
-  if (aqi <= 150) return 'Unhealthy for Sensitive Groups';
-  if (aqi <= 200) return 'Unhealthy';
-  if (aqi <= 300) return 'Very Unhealthy';
-  if (aqi > 300) return 'Hazardous';
-  throw new Error('Invalid AQI value');};
+export const getAQICategory = (aqi: number | null | undefined): AQICategory => {
+  // Handle invalid values
+  if (aqi === null || aqi === undefined || isNaN(aqi) || !isFinite(aqi)) {
+    return 'Moderate'; // Default to Moderate for invalid values
+  }
+  
+  // Ensure aqi is a number
+  const aqiValue = Number(aqi);
+  
+  if (aqiValue <= 50) return 'Good';
+  if (aqiValue <= 100) return 'Moderate';
+  if (aqiValue <= 150) return 'Unhealthy for Sensitive Groups';
+  if (aqiValue <= 200) return 'Unhealthy';
+  if (aqiValue <= 300) return 'Very Unhealthy';
+  if (aqiValue > 300) return 'Hazardous';
+  
+  // Fallback (should not reach here)
+  return 'Moderate';
+};
 
 export const getAQIColor = (category: AQICategory): string => {
   const colors = {
@@ -18,6 +29,42 @@ export const getAQIColor = (category: AQICategory): string => {
     'Hazardous': '#7E0023',
   };
   return colors[category];
+};
+
+/**
+ * Get AQI color directly from AQI number value
+ * @param aqi - Air Quality Index number (can be null/undefined for safety)
+ * @returns Hex color code
+ */
+export const getAQIColorByValue = (aqi: number | null | undefined): string => {
+  const category = getAQICategory(aqi);
+  return getAQIColor(category);
+};
+
+/**
+ * Get health message based on AQI value
+ * @param aqi - Air Quality Index number (can be null/undefined for safety)
+ * @returns Health message string
+ */
+export const getHealthMessage = (aqi: number | null | undefined): string => {
+  // Handle invalid values
+  if (aqi === null || aqi === undefined || isNaN(aqi) || !isFinite(aqi)) {
+    return 'Air quality data is not available.';
+  }
+  
+  const aqiValue = Number(aqi);
+  
+  if (aqiValue <= 50)
+    return 'Air quality is good. Ideal for outdoor activities!';
+  if (aqiValue <= 100)
+    return 'Air quality is acceptable for most people.';
+  if (aqiValue <= 150)
+    return 'Sensitive groups should limit prolonged outdoor exposure.';
+  if (aqiValue <= 200)
+    return 'Everyone may begin to experience health effects.';
+  if (aqiValue <= 300)
+    return 'Health alert: Everyone may experience serious effects.';
+  return 'Health warning: Emergency conditions. Avoid outdoor activities.';
 };
 
 export const getAQITextColor = (category: AQICategory): string => {
