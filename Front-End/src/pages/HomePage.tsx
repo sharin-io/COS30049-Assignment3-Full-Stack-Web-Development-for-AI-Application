@@ -32,6 +32,8 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
   const [selectedLocation, setSelectedLocation] = React.useState<AQIData | null>(null);
   const [locations, setLocations] = React.useState<AQIData[]>([]);
   const [loading, setLoading] = React.useState(false);
+  const [searchLoading, setSearchLoading] = React.useState(false);
+  const [locateLoading, setLocateLoading] = React.useState(false);
   const [error, setError] = React.useState<{
     type: string;
     message: string;
@@ -39,6 +41,17 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
     originalQuery: string;
   } | null>(null);
   const [lastUpdate, setLastUpdate] = React.useState<Date | null>(null);
+  const [searchSuggestions, setSearchSuggestions] = React.useState<Array<{
+    uid: number;
+    name: string;
+    aqi: number | null;
+    time: string;
+    url: string;
+    geo: [number, number] | null;
+  }>>([]);
+  const [showSuggestions, setShowSuggestions] = React.useState(false);
+  const [searchingSuggestions, setSearchingSuggestions] = React.useState(false);
+  const searchTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load default featured cities on mount with backup cities
   React.useEffect(() => {
@@ -46,18 +59,18 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
       setLoading(true);
       setError(null);
       try {
-        // 6 Southeast Asian countries with backup cities
+        // 6 Southeast Asian countries with search terms and backup cities
         const citiesWithBackups = [
-          { primary: "kuala-lumpur", backup: "penang" }, // Malaysia
-          { primary: "bangkok", backup: "chiang-mai" }, // Thailand
-          { primary: "singapore", backup: "singapore" }, // Singapore 
-          { primary: "jakarta", backup: "surabaya" }, // Indonesia
-          { primary: "manila", backup: "cebu" }, // Philippines
-          { primary: "ho-chi-minh-city", backup: "hanoi" }, // Vietnam
+          { searchTerm: "kuala lumpur", backup: "penang", country: "Malaysia" }, // Malaysia
+          { searchTerm: "bangkok", backup: "chiang mai", country: "Thailand" }, // Thailand
+          { searchTerm: "singapore", backup: "singapore", country: "Singapore" }, // Singapore 
+          { searchTerm: "jakarta", backup: "surabaya", country: "Indonesia" }, // Indonesia
+          { searchTerm: "manila", backup: "cebu", country: "Philippines" }, // Philippines
+            { searchTerm: "hanoi", backup: "viet tri", country: "Vietnam" }, // Vietnam
         ];
 
         // Fetch cities with fallback to backup if primary fails
-        const fetchCityWithFallback = async (cityConfig: { primary: string; backup: string }): Promise<AQIData | null> => {
+        const fetchCityWithFallback = async (cityConfig: { searchTerm: string; backup: string; country: string }): Promise<AQIData | null> => {
           // Helper function to validate city data
           const isValidCityData = (data: any): data is AQIData => {
             return data && 
@@ -71,33 +84,93 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
                    isFinite(data.aqi);
           };
 
-          // Try primary city first
+          // Try to find the city using search API first, then use the first result
           try {
-            const primaryData = await waqiApi.getCityFeed(cityConfig.primary);
+            const searchResults = await waqiApi.search(cityConfig.searchTerm);
+            if (searchResults && searchResults.length > 0) {
+              // Find the best match (prefer city-level stations, not specific districts)
+              const cityMatch = searchResults.find(result => 
+                result.name.toLowerCase().includes(cityConfig.searchTerm.toLowerCase()) ||
+                cityConfig.searchTerm.toLowerCase().includes(result.name.toLowerCase().split(',')[0])
+              ) || searchResults[0];
+              
+              // Use station UID to fetch data
+              if (cityMatch.uid) {
+                const primaryData = await waqiApi.getCityFeed(`@${cityMatch.uid}`, true);
             if (isValidCityData(primaryData)) {
               return primaryData;
             }
-            // Primary city returned invalid data, try backup
-            console.warn(`Primary city ${cityConfig.primary} returned invalid data, trying backup ${cityConfig.backup}`);
-          } catch (primaryError) {
-            // Primary city fetch failed, try backup
-            console.warn(`Failed to fetch ${cityConfig.primary}, trying backup ${cityConfig.backup}:`, primaryError);
+              }
+            }
+          } catch (searchError) {
+            // Search failed, will try direct city name formats below
           }
 
-          // Try backup city
+          // Try direct city feed with different formats (suppress errors as many will fail)
+          // Try all common formats - WAQI API accepts various formats
+          const searchTermLower = cityConfig.searchTerm.toLowerCase();
+          const cityFormats: string[] = [
+            searchTermLower.replace(/\s+/g, "-"), // kuala-lumpur, ho-chi-minh
+            searchTermLower.replace(/\s+/g, ""), // kualalumpur, hochiminh
+            searchTermLower, // kuala lumpur, ho chi minh
+          ];
+          
+          // Add city-specific known formats
+          if (searchTermLower.includes("ho chi minh")) {
+            cityFormats.push("ho-chi-minh-city");
+            cityFormats.push("saigon");
+          }
+          if (searchTermLower.includes("kuala lumpur")) {
+            cityFormats.push("kl");
+          }
+
+          for (const format of cityFormats) {
+            try {
+              const primaryData = await waqiApi.getCityFeed(format, true); // Suppress error logs
+              if (isValidCityData(primaryData)) {
+                return primaryData;
+              }
+            } catch (primaryError) {
+              continue; // Try next format
+            }
+          }
+
+          // If primary search failed, try backup
           try {
-            const backupData = await waqiApi.getCityFeed(cityConfig.backup);
+            const backupSearchResults = await waqiApi.search(cityConfig.backup);
+            if (backupSearchResults && backupSearchResults.length > 0) {
+              const backupMatch = backupSearchResults[0];
+              if (backupMatch.uid) {
+                const backupData = await waqiApi.getCityFeed(`@${backupMatch.uid}`);
             if (isValidCityData(backupData)) {
               return backupData;
             }
-            // Backup also returned invalid data
-            console.error(`Backup city ${cityConfig.backup} also returned invalid data`);
-            return null;
-          } catch (backupError) {
-            // Both cities failed
-            console.error(`Both primary (${cityConfig.primary}) and backup (${cityConfig.backup}) cities failed:`, backupError);
-            return null;
+              }
+            }
+          } catch (backupSearchError) {
+            // Backup search failed, try direct backup city name with all formats
+            const backupLower = cityConfig.backup.toLowerCase();
+            const backupFormats: string[] = [
+              backupLower.replace(/\s+/g, "-"), // hyphenated
+              backupLower.replace(/\s+/g, ""), // no spaces
+              backupLower, // original
+            ];
+            
+            for (const format of backupFormats) {
+              try {
+                const backupData = await waqiApi.getCityFeed(format, true); // Suppress error logs
+                if (isValidCityData(backupData)) {
+                  return backupData;
+                }
+              } catch (backupError) {
+                continue;
+              }
+            }
           }
+
+          // Both primary and backup failed
+          console.error(`Failed to fetch data for ${cityConfig.searchTerm} and backup ${cityConfig.backup}`);
+          return null;
         };
 
         // Fetch all cities with fallbacks
@@ -229,6 +302,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
   }, [locations, selectedLocation]);
 
   const handleLocateMe = async () => {
+    setLocateLoading(true);
     setLoading(true);
     setError(null);
     try {
@@ -269,6 +343,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
         originalQuery: ""
       });
     } finally {
+      setLocateLoading(false);
       setLoading(false);
     }
   };
@@ -343,10 +418,8 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
             "mandaluyong"
           ],
           "singapore": [
-            "central-singapore",
-            "north-singapore",
-            "east-singapore",
-            "west-singapore"
+            // Singapore doesn't have district-level data in WAQI API
+            // Only city-level data is available
           ],
         };
     
@@ -365,6 +438,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
     e.preventDefault();
     if (!searchQuery.trim()) return;
 
+    setSearchLoading(true);
     setLoading(true);
     setError(null);
     try {
@@ -501,36 +575,97 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
         originalQuery: searchQuery.trim()
       });
     } finally {
+      setSearchLoading(false);
       setLoading(false);
     }
   };
 
   // Strict city matching - only accepts exact city matches, rejects districts
-  const isCityMatchStrict = (searchQuery: string, returnedCity: string, _returnedCountry: string): boolean => {
+  const isCityMatchStrict = (searchQuery: string, returnedCity: string, returnedCountry: string): boolean => {
     const normalize = (str: string) => str.toLowerCase().trim().replace(/[^a-z0-9]/g, "");
     const searchNormalized = normalize(searchQuery);
     const cityNormalized = normalize(returnedCity);
+    const countryNormalized = normalize(returnedCountry);
+    
+    // First, check if the normalized strings match exactly (handles case differences)
+    if (searchNormalized === cityNormalized) {
+      return true;
+    }
+    
+    // Check if one contains the other (handles cases like "singapore" vs "Singapore")
+    // This is important because WAQI API may return station names in local languages
+    if (cityNormalized.includes(searchNormalized) || searchNormalized.includes(cityNormalized)) {
+      // But only if they're similar enough (to avoid false matches)
+      const similarity = calculateSimilarity(searchNormalized, cityNormalized);
+      if (similarity >= 0.6) {
+        return true;
+      }
+    }
     
     // City mappings with their known variations
-    const cityMappings: Record<string, string[]> = {
-      "kuala lumpur": ["kuala lumpur", "kl", "kualalumpur"],
-      "bangkok": ["bangkok"],
-      "singapore": ["singapore", "sg"],
-      "jakarta": ["jakarta"],
-      "manila": ["manila"],
-      "ho chi minh city": ["ho chi minh city", "saigon", "hcmc"],
-      "hanoi": ["hanoi"],
-      "penang": ["penang", "georgetown"],
-      "chiang mai": ["chiang mai", "chiang-mai"],
-      "surabaya": ["surabaya"],
-      "cebu": ["cebu"],
+    const cityMappings: Record<string, { variations: string[], countries: string[] }> = {
+      "kuala lumpur": { 
+        variations: ["kuala lumpur", "kl", "kualalumpur"],
+        countries: ["malaysia", "my"]
+      },
+      "bangkok": { 
+        variations: ["bangkok", "krung thep", "krungthep", "กรุงเทพ"],
+        countries: ["thailand", "th"]
+      },
+      "singapore": { 
+        variations: ["singapore", "sg"],
+        countries: ["singapore", "sg"]
+      },
+      "jakarta": { 
+        variations: ["jakarta"],
+        countries: ["indonesia", "id"]
+      },
+      "manila": { 
+        variations: ["manila"],
+        countries: ["philippines", "ph"]
+      },
+      "ho chi minh city": { 
+        variations: ["ho chi minh city", "saigon", "hcmc"],
+        countries: ["vietnam", "vn"]
+      },
+      "hanoi": { 
+        variations: ["hanoi"],
+        countries: ["vietnam", "vn"]
+      },
+      "penang": { 
+        variations: ["penang", "georgetown"],
+        countries: ["malaysia", "my"]
+      },
+      "chiang mai": { 
+        variations: ["chiang mai", "chiang-mai"],
+        countries: ["thailand", "th"]
+      },
+      "surabaya": { 
+        variations: ["surabaya"],
+        countries: ["indonesia", "id"]
+      },
+      "cebu": { 
+        variations: ["cebu"],
+        countries: ["philippines", "ph"]
+      },
     };
     
     // Check if search query matches a known city
-    for (const [cityKey, variations] of Object.entries(cityMappings)) {
-      if (variations.some(v => normalize(v) === searchNormalized)) {
-        // Only accept if returned city is a known variation of the searched city (NOT a district)
-        if (variations.some(v => normalize(v) === cityNormalized) || normalize(cityKey) === cityNormalized) {
+    for (const [cityKey, cityData] of Object.entries(cityMappings)) {
+      const cityKeyNormalized = normalize(cityKey);
+      
+      // Check if search query matches this city
+      if (cityData.variations.some(v => normalize(v) === searchNormalized) || cityKeyNormalized === searchNormalized) {
+        // Check if returned country matches expected country for this city
+        const countryMatches = cityData.countries.some(c => normalize(c) === countryNormalized || countryNormalized.includes(normalize(c)));
+        
+        // Accept if:
+        // 1. Returned city matches any variation or the city key, OR
+        // 2. Returned city contains the city key and country matches (handles station names in local languages)
+        if (cityData.variations.some(v => normalize(v) === cityNormalized) || 
+            cityKeyNormalized === cityNormalized ||
+            (cityNormalized.includes(cityKeyNormalized) && countryMatches) ||
+            (cityKeyNormalized.includes(cityNormalized) && countryMatches)) {
           return true;
         }
         // Reject district matches when searching for a city
@@ -538,9 +673,20 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
       }
     }
     
-    // For unknown cities, check if names are very similar (>= 80% similarity for strict matching)
+    // For unknown cities, check if names are very similar (>= 70% similarity for strict matching)
+    // Also check if country matches to increase confidence
     const similarity = calculateSimilarity(searchNormalized, cityNormalized);
-    return similarity >= 0.8;
+    if (similarity >= 0.7) {
+      return true;
+    }
+    
+    // If similarity is lower but still reasonable (>= 0.5) and one contains the other, accept it
+    // This handles cases where API returns station names with additional text
+    if (similarity >= 0.5 && (cityNormalized.includes(searchNormalized) || searchNormalized.includes(cityNormalized))) {
+      return true;
+    }
+    
+    return false;
   };
 
   // Flexible matching - accepts city and district matches (used for district searches)
@@ -687,6 +833,114 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
     return `${hours} hours ago`;
   };
 
+  // Debounced search for autocomplete suggestions
+  const handleSearchInputChange = (value: string) => {
+    setSearchQuery(value);
+    
+    // Clear previous timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    // Don't search if query is too short
+    if (value.trim().length < 2) {
+      setSearchSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    // Set loading state
+    setSearchingSuggestions(true);
+    setShowSuggestions(true);
+
+    // Debounce search - wait 300ms after user stops typing
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const results = await waqiApi.search(value.trim());
+        setSearchSuggestions(results.slice(0, 10)); // Limit to 10 results
+      } catch (err) {
+        console.error('Error fetching search suggestions:', err);
+        setSearchSuggestions([]);
+      } finally {
+        setSearchingSuggestions(false);
+      }
+    }, 300);
+  };
+
+  // Handle selecting a suggestion
+  const handleSuggestionSelect = async (suggestion: {
+    uid: number;
+    name: string;
+    aqi: number | null;
+    time: string;
+    url: string;
+    geo: [number, number] | null;
+  }) => {
+    setSearchQuery(suggestion.name);
+    setShowSuggestions(false);
+    setSearchSuggestions([]);
+    
+    // Extract station ID (idx) from uid
+    // WAQI API format: @{idx} for stations (according to API docs, city can be name or id like @7397)
+    const stationIdx = suggestion.uid;
+    const searchTerm = stationIdx ? `@${stationIdx}` : suggestion.name.toLowerCase().replace(/\s+/g, '-');
+    
+    // Perform search with selected suggestion
+    setSearchLoading(true);
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const locationData = await waqiApi.getCityFeed(searchTerm);
+      
+      if (locationData && 
+          locationData.city && 
+          locationData.country && 
+          locationData.aqi !== null && 
+          locationData.aqi !== undefined && 
+          !isNaN(locationData.aqi) && 
+          isFinite(locationData.aqi)) {
+        setSelectedLocation(locationData);
+        
+        // Add to locations if not already present
+        setLocations((prev) => {
+          const exists = prev.some(
+            (loc) =>
+              loc.city === locationData.city && loc.country === locationData.country
+          );
+          if (!exists) {
+            return [locationData, ...prev];
+          }
+          return prev;
+        });
+        
+        setLastUpdate(new Date());
+      } else {
+        throw new Error("Invalid air quality data received");
+      }
+    } catch (err: any) {
+      const suggestions = getCitySuggestions(suggestion.name);
+      setError({
+        type: 'search_error',
+        message: `Unable to fetch data for "${suggestion.name}"`,
+        suggestions: suggestions,
+        originalQuery: suggestion.name
+      });
+    } finally {
+      setSearchLoading(false);
+      setLoading(false);
+    }
+  };
+
+  // Cleanup timeout on unmount
+  React.useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-blue-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
       {/* Hero Search Section */}
@@ -707,22 +961,77 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
           <form onSubmit={handleSearch} className="max-w-4xl mx-auto">
             <div className="flex gap-3">
               <div className="flex-1 relative">
-                <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400 z-10" />
                 <Input
                   type="text"
                   placeholder="Search any Location, City, State or Country"
                   className="pl-12 h-14 bg-white dark:bg-gray-800 border-0 shadow-lg text-base"
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  disabled={loading}
+                  onChange={(e) => handleSearchInputChange(e.target.value)}
+                  onFocus={() => {
+                    if (searchSuggestions.length > 0) {
+                      setShowSuggestions(true);
+                    }
+                  }}
+                  onBlur={() => {
+                    // Delay hiding suggestions to allow clicking on them
+                    setTimeout(() => setShowSuggestions(false), 200);
+                  }}
+                  disabled={searchLoading || locateLoading}
                 />
+                
+                {/* Autocomplete Suggestions Dropdown */}
+                {showSuggestions && (searchSuggestions.length > 0 || searchingSuggestions) && (
+                  <div className="absolute z-50 w-full mt-2 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-700 max-h-96 overflow-y-auto">
+                    {searchingSuggestions ? (
+                      <div className="p-4 text-center text-gray-500 dark:text-gray-400">
+                        <Loader2 className="h-5 w-5 animate-spin mx-auto" />
+                        <p className="mt-2 text-sm">Searching...</p>
+                      </div>
+                    ) : searchSuggestions.length > 0 ? (
+                      <div className="py-2">
+                        {searchSuggestions.map((suggestion, index) => (
+                          <button
+                            key={`${suggestion.uid}-${index}`}
+                            type="button"
+                            onClick={() => handleSuggestionSelect(suggestion)}
+                            className="w-full px-4 py-3 text-left hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors border-b border-gray-100 dark:border-gray-700 last:border-b-0"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                                  {suggestion.name}
+                                </p>
+                                {suggestion.aqi !== null && (
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                    AQI: {suggestion.aqi} • {suggestion.time}
+                                  </p>
+                                )}
+                              </div>
+                              {suggestion.aqi !== null && (
+                                <div
+                                  className="ml-3 px-2 py-1 rounded text-xs font-semibold text-white flex-shrink-0"
+                                  style={{
+                                    backgroundColor: getAQIColorByValue(suggestion.aqi)
+                                  }}
+                                >
+                                  {suggestion.aqi}
+                                </div>
+                              )}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                )}
               </div>
               <Button
                 type="submit"
                 className="h-14 px-6 bg-[#4CAF50] hover:bg-[#45a049] text-white shadow-lg font-semibold"
-                disabled={loading}
+                disabled={searchLoading || locateLoading}
               >
-                {loading ? (
+                {searchLoading ? (
                   <Loader2 className="h-5 w-5 mr-2 animate-spin" />
                 ) : (
                   <Search className="h-5 w-5 mr-2" />
@@ -733,9 +1042,9 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
                 type="button"
                 onClick={handleLocateMe}
                 className="h-14 px-6 bg-[#2196F3] hover:bg-[#1976D2] text-white shadow-lg font-semibold"
-                disabled={loading}
+                disabled={searchLoading || locateLoading}
               >
-                {loading ? (
+                {locateLoading ? (
                   <Loader2 className="h-5 w-5 mr-2 animate-spin" />
                 ) : (
                   <MapPin className="h-5 w-5 mr-2" />

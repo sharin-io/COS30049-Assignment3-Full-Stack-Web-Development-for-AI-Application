@@ -12,7 +12,7 @@ app.use(cors());
 app.use(express.json());
 
 // WAQI API Configuration
-// Use environment variable if available, otherwise use default token
+
 const WAQI_TOKEN = process.env.WAQI_TOKEN || '4270e59f10d0948e38cd570a70a231ef544629e5';
 const WAQI_BASE_URL = 'https://api.waqi.info';
 
@@ -380,6 +380,53 @@ app.post("/api/waqi/cities", async (req, res) => {
     res.status(500).json({
       error: "Failed to fetch city feeds",
       message: err.message
+    });
+  }
+});
+
+// Search for stations/cities using WAQI search API
+app.get("/api/waqi/search", async (req, res) => {
+  const { keyword } = req.query;
+
+  if (!keyword || keyword.trim() === '') {
+    return res.status(400).json({
+      error: "Keyword is required",
+      status: 'error'
+    });
+  }
+
+  try {
+    const response = await axios.get(
+      `${WAQI_BASE_URL}/search/?token=${WAQI_TOKEN}&keyword=${encodeURIComponent(keyword)}`
+    );
+
+    if (response.data.status !== 'ok') {
+      return res.status(400).json({
+        error: response.data.message || 'Failed to search',
+        status: 'error'
+      });
+    }
+
+    // Transform the search results to a simpler format
+    // WAQI API returns: { status: "ok", data: [{ uid, aqi, time: {stime, tz}, station: {name, geo, url} }] }
+    const results = (response.data.data || []).map((item) => ({
+      uid: item.uid || item.idx, // Use uid or idx as fallback
+      name: item.station?.name || item.city?.name || '',
+      aqi: item.aqi !== null && item.aqi !== undefined ? parseInt(item.aqi) : null,
+      time: item.time?.stime || item.time?.s || '',
+      url: item.station?.url || item.city?.url || '',
+      geo: item.station?.geo || item.city?.geo || null
+    }));
+
+    res.json({
+      status: 'ok',
+      data: results
+    });
+  } catch (err) {
+    console.error("Error searching WAQI:", err.response?.data || err.message);
+    res.status(500).json({
+      error: "Failed to search",
+      message: err.response?.data?.message || err.message
     });
   }
 });
