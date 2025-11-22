@@ -62,7 +62,7 @@ npm --version      # Should show version 6 or higher
 
 2. **Start Backend Services**:
    ```bash
-   cd backend
+   cd Back-End
    chmod +x start.sh  # Make script executable (Linux/Mac)
    ./start.sh
    ```
@@ -77,7 +77,7 @@ npm --version      # Should show version 6 or higher
 
 3. **Start Frontend** (in a new terminal):
    ```bash
-   cd frontend
+   cd Front-End
    npm install  # Only needed first time
    npm run dev  # Start development server
    ```
@@ -89,13 +89,13 @@ npm --version      # Should show version 6 or higher
 
 ### Option 2: Manual Setup
 
-See [Backend README](./backend/README.md) and [Frontend README](./frontend/README.md) for detailed manual setup instructions.
+See [Backend README](./Back-End/README.md) for detailed manual setup instructions.
 
 ## 📁 Project Structure
 
 ```
 COS30049-Assignment3-Full-Stack-Web-Development-for-AI-Application/
-├── backend/                    # Backend services
+├── Back-End/                    # Backend services
 │   ├── main.py                # FastAPI ML endpoints
 │   ├── server.js              # Express API gateway
 │   ├── requirements.txt       # Python dependencies
@@ -110,7 +110,7 @@ COS30049-Assignment3-Full-Stack-Web-Development-for-AI-Application/
 │           ├── ClassificationModels.py    # Classification models
 │           └── ClusteringModel.py        # Clustering models
 │
-├── frontend/                   # React frontend
+├── Front-End/                   # React frontend
 │   ├── src/
 │   │   ├── pages/             # Page components
 │   │   ├── components/        # Reusable components
@@ -187,7 +187,7 @@ For comprehensive API endpoint documentation with detailed request/response exam
 ### Frontend Development
 
 ```bash
-cd frontend
+cd Front-End
 npm run dev    # Start dev server
 npm run build  # Build for production
 npm run preview # Preview production build
@@ -196,17 +196,17 @@ npm run preview # Preview production build
 ### Backend Development
 
 ```bash
-cd backend
+cd Back-End
 ./start.sh  # Start both servers using script
 ```
 
 ## 🔍 Troubleshooting
 
-See [Backend README](./backend/README.md) and [Frontend README](./frontend/README.md) for detailed troubleshooting guides.
+See [Backend README](./Back-End/README.md)
 
 Common issues:
-- **Port conflicts**: Change ports in `backend/server.js` and `backend/main.py`
-- **Permission errors**: Use `chmod +x backend/start.sh`
+- **Port conflicts**: Change ports in `backend/server.js` and `Back-End/main.py`
+- **Permission errors**: Use `chmod +x Back-End/start.sh`
 - **Dependency issues**: Delete `node_modules` and reinstall
 
 
