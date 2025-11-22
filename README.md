@@ -232,7 +232,5 @@ This project is for educational purposes (COS30049 Assignment 3).
 Student submission for COS30049 - Full-Stack Web Development for AI Application
 
 ---
-
-**Repository**: `COS30049-Assignment3-Full-Stack-Web-Development-for-AI-Application`
 **Last Updated**: 2025-01-22
 

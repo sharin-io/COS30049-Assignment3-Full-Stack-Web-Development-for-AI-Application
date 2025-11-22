@@ -33,7 +33,7 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
             </p>
             <div className="flex flex-wrap items-center gap-3 sm:gap-4">
               <a
-                href="https://github.com"
+                href="https://github.com/sharin-io/COS30049-Assignment3-Full-Stack-Web-Development-for-AI-Application"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 text-gray-600 dark:text-gray-400 hover:text-[#2196F3] dark:hover:text-blue-400 transition-colors group"
