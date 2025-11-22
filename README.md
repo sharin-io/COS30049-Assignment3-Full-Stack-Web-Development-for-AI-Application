@@ -31,7 +31,6 @@ A comprehensive air quality monitoring and prediction application with real-time
 - [Technology Stack](#technology-stack)
 - [Development Guide](#development-guide)
 - [Troubleshooting](#troubleshooting)
-- [Assignment Rubric Compliance](#assignment-rubric-compliance)
 
 ## 🔧 Prerequisites
 
