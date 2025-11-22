@@ -35,7 +35,7 @@ export interface PredictionResponse {
 export interface DailyPrediction {
   date: string; // YYYY-MM-DD
   aqi: number;
-  category: string;
+  category?: string; // Optional - backend doesn't return this
 }
 
 export interface MonthlyAverage {
@@ -44,11 +44,11 @@ export interface MonthlyAverage {
 }
 
 export interface MultiDayPredictionResponse {
-  success: boolean;
+  success?: boolean; // Optional - backend doesn't return this
   start_date: string;
   end_date: string;
   predictions: DailyPrediction[];
-  monthly_averages: MonthlyAverage[];
+  monthly_averages?: MonthlyAverage[]; // Optional - backend doesn't return this
 }
 
 export type AQICategory = 'Good' | 'Moderate' | 'Unhealthy for Sensitive Groups' | 'Unhealthy' | 'Very Unhealthy' | 'Hazardous';

@@ -65,21 +65,26 @@ async def classifier_api():
     return {"classifier": clean_json(data)}
 
 
-
 # ---------------------------------------------------------
 # REAL-TIME PREDICTION ENGINE
 # ---------------------------------------------------------
-def run_temp_prediction(country: str, user_temp: float, user_humidity: float, user_wind: float, start_date: str):
+def run_temp_prediction(country: str, region: str, user_temp: float, user_humidity: float, user_wind: float, start_date: str):
     df = pd.read_csv("ML/data/Final.csv")
     df['Date'] = pd.to_datetime(df['Date'])
     df['AQI'] = pd.to_numeric(df['AQI'], errors='coerce')
     df['Temperature'] = pd.to_numeric(df['Temperature'], errors='coerce')
-    df['RelativeHumidity'] = pd.to_numeric(df['RelativeHumidity'], errors='coerce')
+    df['RelativeHumidity'] = pd.to_numeric(
+        df['RelativeHumidity'], errors='coerce')
     df['WindSpeed'] = pd.to_numeric(df['WindSpeed'], errors='coerce')
 
-    
-    # Filter country
-    country_data = df[df['Country'] == country].sort_values('Date').copy()
+    # Filter by both country AND region
+    country_data = df[(df['Country'] == country) & (
+        df['Region'] == region)].sort_values('Date').copy()
+
+    # Validate that we have data for this country-region combination
+    if len(country_data) == 0:
+        raise ValueError(
+            f"No data found for country '{country}' and region '{region}'")
 
     # Feature engineering
     country_data['month'] = country_data['Date'].dt.month
@@ -95,8 +100,10 @@ def run_temp_prediction(country: str, user_temp: float, user_humidity: float, us
 
     country_data['month_sin'] = np.sin(2 * np.pi * country_data['month'] / 12)
     country_data['month_cos'] = np.cos(2 * np.pi * country_data['month'] / 12)
-    country_data['dayofweek_sin'] = np.sin(2 * np.pi * country_data['dayofweek'] / 7)
-    country_data['dayofweek_cos'] = np.cos(2 * np.pi * country_data['dayofweek'] / 7)
+    country_data['dayofweek_sin'] = np.sin(
+        2 * np.pi * country_data['dayofweek'] / 7)
+    country_data['dayofweek_cos'] = np.cos(
+        2 * np.pi * country_data['dayofweek'] / 7)
 
     country_data = country_data.dropna()
 
@@ -108,7 +115,6 @@ def run_temp_prediction(country: str, user_temp: float, user_humidity: float, us
 
     for col in lag_cols:
         country_data[col] = pd.to_numeric(country_data[col], errors='coerce')
-
 
     # Train model (demo)
     features = [
@@ -185,14 +191,14 @@ def run_temp_prediction(country: str, user_temp: float, user_humidity: float, us
         })
 
         new_row = pd.DataFrame({'Date': [next_date], 'AQI': [pred]})
-        last_known = pd.concat([last_known, new_row]).iloc[1:].reset_index(drop=True)
+        last_known = pd.concat([last_known, new_row]
+                               ).iloc[1:].reset_index(drop=True)
 
     return {
         "predictions": predictions,
         "start_date": start.strftime("%Y-%m-%d"),
         "end_date": future_dates[-1].strftime("%Y-%m-%d")
     }
-
 
 
 # ---------------------------
@@ -214,6 +220,7 @@ class PredictionRequest(BaseModel):
 def predict_api(payload: PredictionRequest):
 
     country = payload.country
+    region = payload.region
     temp = payload.temperature
     humidity = payload.relative_humidity
     wind = payload.wind_speed
@@ -221,6 +228,7 @@ def predict_api(payload: PredictionRequest):
 
     predictions = run_temp_prediction(
         country=country,
+        region=region,
         user_temp=temp,
         user_humidity=humidity,
         user_wind=wind,

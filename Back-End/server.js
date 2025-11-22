@@ -125,21 +125,46 @@ app.post("/api/predict", async (req, res) => {
   if (payload.temperature == null || isNaN(payload.temperature))
     errors.push("temperature must be a valid number");
 
-  if (payload.humidity == null || isNaN(payload.humidity))
-    errors.push("humidity must be a valid number");
 
-  if (payload.wind == null || isNaN(payload.wind))
-    errors.push("wind must be a valid number");
+  if (payload.relative_humidity == null || isNaN(payload.relative_humidity))
+    errors.push("relative_humidity must be a valid number");
+
+  if (payload.wind_speed == null || isNaN(payload.wind_speed))
+    errors.push("wind_speed must be a valid number");
 
   // Optional realistic range validation
   if (payload.temperature < -50 || payload.temperature > 60)
     errors.push("temperature out of valid range (-50 to 60)");
 
-  if (payload.humidity < 0 || payload.humidity > 100)
-    errors.push("humidity must be between 0 and 100");
+  if (payload.relative_humidity < 0 || payload.relative_humidity > 100)
+    errors.push("relative_humidity must be between 0 and 100");
 
-  if (payload.wind < 0 || payload.wind > 200)
-    errors.push("wind is unrealistic (0–200)");
+  if (payload.wind_speed < 0 || payload.wind_speed > 200)
+    errors.push("wind_speed is unrealistic (0–200)");
+
+  // -------------------------
+  // REGION VALIDATION - Verify region exists for the country
+  // -------------------------
+  if (payload.country && payload.region) {
+    const regionsData = {
+      Malaysia: [
+        "AlorSetar", "KualaLumpur", "JohorBahru", "Kuantan", "Penang",
+        "Melaka", "Ipoh", "KotaKinabalu", "Kuching"
+      ],
+      Thailand: [
+        "Bangkok", "ChiangMai", "Phuket", "Pattaya", "UdonThani",
+        "HatYai", "Rayong", "KhonKaen"
+      ],
+      Singapore: [
+        "Central", "North", "East", "West", "South"
+      ]
+    };
+
+    const validRegions = regionsData[payload.country];
+    if (!validRegions || !validRegions.includes(payload.region)) {
+      errors.push(`Invalid region '${payload.region}' for country '${payload.country}'. Valid regions: ${validRegions ? validRegions.join(', ') : 'none'}`);
+    }
+  }
 
   if (errors.length > 0) {
     return res.status(400).json({
@@ -153,7 +178,17 @@ app.post("/api/predict", async (req, res) => {
   // -------------------------
 
   try {
-    const response = await axios.post("http://localhost:8000/predict", payload);
+    // Forward the correct payload structure to Python backend
+    const pythonPayload = {
+      country: payload.country,
+      region: payload.region,
+      temperature: payload.temperature,
+      relative_humidity: payload.relative_humidity,
+      wind_speed: payload.wind_speed,
+      date: payload.date
+    };
+
+    const response = await axios.post("http://localhost:8000/predict", pythonPayload);
 
     console.log("Predict result:", response.data);
 
@@ -161,6 +196,15 @@ app.post("/api/predict", async (req, res) => {
 
   } catch (err) {
     console.error("Error fetching prediction:", err.response?.data || err.message);
+
+    // Handle validation errors from Python backend
+    if (err.response?.status === 422) {
+      return res.status(400).json({
+        error: "Validation error",
+        details: err.response.data?.detail || err.message
+      });
+    }
+
     res.status(500).json({
       error: "Prediction failed",
       details: err.response?.data || err.message

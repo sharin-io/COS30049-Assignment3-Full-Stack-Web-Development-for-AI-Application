@@ -15,7 +15,7 @@ import type {
   PredictionRequest,
   MultiDayPredictionResponse,
 } from "../types/aqi.types";
-import api, { fetchRegression, aqiApi } from "../api/aqi";
+import { fetchRegression, aqiApi } from "../api/aqi";
 import Prediction from "../components/chart/Prediction";
 
 
@@ -133,10 +133,15 @@ export const TestPredictionPage: React.FC = () => {
     // -------- END VALIDATION --------
 
     try {
-      const response = await api.post("/api/predict", formData);
+      const response = await aqiApi.predict(formData);
       setResult(response.data);
-    } catch {
-      setError("Failed to get prediction");
+    } catch (err: any) {
+      // Extract error message from response
+      const errorMsg = err.response?.data?.details || 
+                      err.response?.data?.error || 
+                      err.message || 
+                      "Failed to get prediction";
+      setError(Array.isArray(errorMsg) ? errorMsg.join(", ") : errorMsg);
     }
     setLoading(false);
   };
